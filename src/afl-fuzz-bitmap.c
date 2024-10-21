@@ -455,6 +455,16 @@ void write_crash_readme(afl_state_t *afl) {
 u8 __attribute__((hot))
 save_if_interesting(afl_state_t *afl, void *mem, u32 len, u8 fault) {
 
+// ======== logging code for # of mutated bytes ======== //
+#ifdef INTROSPECTION
+  if (afl->n_mut_idx >= N_MUT_SIZE) {
+    fwrite(afl->n_mut, sizeof(u32), N_MUT_SIZE, afl->introspection_file);
+    afl->n_mut_idx = 0;
+  }
+  afl->n_mut[afl->n_mut_idx] = afl->mutated_bytes;
+  ++afl->n_mut_idx;
+  ++afl->gen_tc_total;
+#endif
   if (unlikely(len == 0)) { return 0; }
 
   if (unlikely(fault == FSRV_RUN_TMOUT && afl->afl_env.afl_ignore_timeouts)) {
@@ -519,6 +529,9 @@ save_if_interesting(afl_state_t *afl, void *mem, u32 len, u8 fault) {
     if (likely(!new_bits)) {
 
       if (unlikely(afl->crash_mode)) { ++afl->total_crashes; }
+// ======= write to introspection file even if not saved to queue ===== //
+//#ifdef INTROSPECTION
+//#endif
       return 0;
 
     }
@@ -577,11 +590,8 @@ save_if_interesting(afl_state_t *afl, void *mem, u32 len, u8 fault) {
 
       });
 
-    } else if (afl->mutation[0] != 0) {
-
-      fprintf(afl->introspection_file, "QUEUE %s = %s\n", afl->mutation,
-              afl->queue_top->fname);
-
+    } else {
+      // ======= write to introspection file for tcs saved in queue ===== //
     }
 
 #endif
@@ -680,10 +690,8 @@ save_if_interesting(afl_state_t *afl, void *mem, u32 len, u8 fault) {
 
         });
 
-      } else if (afl->mutation[0] != 0) {
-
-        fprintf(afl->introspection_file, "UNIQUE_TIMEOUT %s\n", afl->mutation);
-
+      } else {
+        // ======= write to introspection file for hangs ===== //
       }
 
 #endif
@@ -708,6 +716,9 @@ save_if_interesting(afl_state_t *afl, void *mem, u32 len, u8 fault) {
         }
 
         new_fault = fuzz_run_target(afl, &afl->fsrv, afl->hang_tmout);
+#ifdef INTROSPECTION
+        ++afl->rerun_hang_total;
+#endif
         classify_counts(&afl->fsrv);
 
         /* A corner case that one user reported bumping into: increasing the
@@ -824,10 +835,8 @@ save_if_interesting(afl_state_t *afl, void *mem, u32 len, u8 fault) {
 
         });
 
-      } else if (afl->mutation[0] != 0) {
-
-        fprintf(afl->introspection_file, "UNIQUE_CRASH %s\n", afl->mutation);
-
+      } else {
+        // ======= write to introspection file for crashes ===== //
       }
 
 #endif
